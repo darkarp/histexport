@@ -76,6 +76,11 @@ def fetch_and_write_data(conn, output_dir, output_base, formats, extract_types):
             logging.info(f"Data saved to {output_file}")
 
 
+def process_history_file(input_path, output_dir, output_base, formats, extract_types):
+    conn = connect_db(input_path)
+    fetch_and_write_data(conn, output_dir, output_base, formats, extract_types)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Export Chromium-based browser and download history to various formats.",
@@ -87,9 +92,13 @@ def main():
             histexport -i 'path/to/history' -o 'output' -f xlsx -e downloads
         3) Enable logging and specify output directory:
             histexport -i 'path/to/history' -o 'output' -d '/output/dir' -l
+        4) Extract URLs and downloads from a folder of SQLite files:
+            histexport -i 'path/to/history_folder' -t folder -o 'output' -d '/output/dir' -f csv xlsx -e urls downloads
         """)
     parser.add_argument('-i', '--input', required=True,
                         help='Path to the SQLite history file.')
+    parser.add_argument('-t', '--type', choices=['file', 'folder'], default='file',
+                        help='Type of the input: file or folder. Default is file')
     parser.add_argument('-o', '--output', required=True,
                         help='Base name for the output files.')
     parser.add_argument('-d', '--dir', required=False, default='./',
@@ -108,9 +117,14 @@ def main():
     if not os.path.exists(args.dir):
         os.makedirs(args.dir)
 
-    conn = connect_db(args.input)
-    fetch_and_write_data(conn, args.dir, args.output,
-                         args.formats, args.extract)
+    if args.type == 'folder':
+        for filename in os.listdir(args.input):
+            if filename.endswith(".sqlite"):
+                input_path = os.path.join(args.input, filename)
+                output_base = os.path.splitext(filename)[0]
+                process_history_file(input_path, args.dir, output_base, args.formats, args.extract)
+    else:
+        process_history_file(args.input, args.dir, args.output, args.formats, args.extract)
 
 
 if __name__ == "__main__":

@@ -67,11 +67,17 @@ Either of these methods will install the required Python packages and make `hist
 3. Enable logging:
  ```
  histexport -i path/to/history -o output_name -l
+ ```  
+
+4. Extract from a folder of SQLite files:
+ ```
+ histexport -i path/to/history_folder -t folder -o output_name -d path/to/output -f csv xlsx -e urls downloads
  ```
 
 #### Arguments
 
 - `-i`, `--input`: Path to the SQLite history file. (required)
+- `-t`, `--type`: Type of the input: file or folder. Default is file
 - `-o`, `--output`: Base name for output files. (required)
 - `-d`, `--dir`: Output directory. (optional, default is `./`)
 - `-f`, `--formats`: Output formats (csv, xlsx, txt). (optional, default is `txt`)
