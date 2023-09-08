@@ -81,6 +81,12 @@ def process_history_file(input_path, output_dir, output_base, formats, extract_t
     fetch_and_write_data(conn, output_dir, output_base, formats, extract_types)
 
 
+def is_sqlite3(filename):
+    with open(filename, 'rb') as f:
+        header = f.read(16)
+    return header == b'SQLite format 3\x00'
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Export Chromium-based browser and download history to various formats.",
@@ -119,8 +125,8 @@ def main():
 
     if args.type == 'folder':
         for filename in os.listdir(args.input):
-            if filename.endswith(".sqlite"):
-                input_path = os.path.join(args.input, filename)
+            input_path = os.path.join(args.input, filename)
+            if is_sqlite3(input_path):
                 output_base = os.path.splitext(filename)[0]
                 process_history_file(input_path, args.dir, output_base, args.formats, args.extract)
     else:
