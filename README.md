@@ -18,7 +18,7 @@
 
 ## Introduction
 
-HistoryExtractor is a Python utility aimed at exporting Chromium-based browser history and downloads data to various formats such as CSV, XLSX, and TXT. Designed with a focus on user flexibility and data granularity, this tool provides customizable extraction options to suit different investigative or analytic needs.
+HistoryExtractor is a Python utility aimed at exporting Chromium-based browser history and downloads data to various formats such as CSV, XLSX, and TXT. Designed with a focus on user flexibility, this tool provides customizable extraction options to suit different needs.
 
 ## Prerequisites
 
