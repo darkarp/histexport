@@ -93,11 +93,11 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""Examples:
         1) Extract URLs and save to CSV and TXT:
-            histexport -i 'path/to/history' -o 'output' -f csv txt -e urls
+            histexport -i 'path/to/history/history_file' -o 'output' -f csv txt -e urls
         2) Extract downloads and save to XLSX:
-            histexport -i 'path/to/history' -o 'output' -f xlsx -e downloads
+            histexport -i 'path/to/history/history_file' -o 'output' -f xlsx -e downloads
         3) Enable logging and specify output directory:
-            histexport -i 'path/to/history' -o 'output' -d '/output/dir' -l
+            histexport -i 'path/to/history/history_file' -o 'output' -d '/output/dir' -l
         4) Extract URLs and downloads from a folder of SQLite files:
             histexport -i 'path/to/history_folder' -t folder -o 'output' -d '/output/dir' -f csv xlsx -e urls downloads
         """)
