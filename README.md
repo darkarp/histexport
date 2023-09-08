@@ -54,24 +54,24 @@ Either of these methods will install the required Python packages and make `hist
 
 ### Command Line Interface
 
-1. Basic extraction of URLs and Downloads:
+1. Basic extraction of URLs and Downloads in `txt`:
  ```
- histexport -i path/to/history/history_file -o output_name
+ histexport -i path/to/history/history_file -o output_file
  ```
 
 2. Specify output directory and formats:
  ```
- histexport -i path/to/history/history_file -o output_name -d path/to/output -f csv xlsx
+ histexport -i path/to/history/history_file -o output_file -d path/to/output -f csv xlsx
  ```
 
-3. Enable logging:
+3. Enable logging (`-l`):
  ```
- histexport -i path/to/history/history_file -o output_name -l
+ histexport -i path/to/history/history_file -o output_file -l
  ```  
 
 4. Extract from a folder of SQLite files:
  ```
- histexport -i path/to/history_folder -t folder -o output_name -d path/to/output -f csv xlsx -e urls downloads
+ histexport -i path/to/history_folder -t folder -o output_file -d path/to/output -f csv xlsx -e urls downloads
  ```
 
 #### Arguments
