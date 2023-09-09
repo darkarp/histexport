@@ -1,10 +1,21 @@
 import os
+import shutil
 import sqlite3
 import logging
 import argparse
+import tempfile
+import colorlog
 import pandas as pd
+from time import sleep
+from queue import Queue
+from typing import List
+from threading import Lock
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, List, Any, Union
+from concurrent.futures import ThreadPoolExecutor
+
+MAX_RETRIES = 5
+BACKOFF_FACTOR = 0.2
+FILE_LOCK = Lock()
 
 
 def init_logging(enable_logging: bool) -> None:
@@ -14,26 +25,74 @@ def init_logging(enable_logging: bool) -> None:
         enable_logging (bool): Flag to enable or disable logging.
     """
     if enable_logging:
-        logging.basicConfig(level=logging.INFO)
-        logging.info("Logging is enabled.")
+        # logging.basicConfig(level=logging.INFO)
+        # logging.info("Logging is enabled.")
+        # Create a logger with colorized output
+        logger = colorlog.getLogger()
+        logger.setLevel(logging.INFO)
+        handler = colorlog.StreamHandler()
+        handler.setFormatter(colorlog.ColoredFormatter(
+            '%(log_color)s%(levelname)-8s%(reset)s %(message)s',
+            log_colors={
+                'DEBUG': 'cyan',
+                'INFO': 'green',
+                'WARNING': 'yellow',
+                'ERROR': 'red',
+                'CRITICAL': 'red,bg_white',
+            }
+        ))
+        logger.addHandler(handler)
 
 
-def connect_db(path_to_history: str) -> Optional[sqlite3.Connection]:
+def dummy_query(conn: sqlite3.Connection) -> bool:
+    """Run a dummy query to check for a database lock."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='urls'")
+
+
+def connect_db(path_to_history: str, retries=MAX_RETRIES) -> tuple:
     """Connect to an SQLite database.
 
     Args:
         path_to_history (str): Path to SQLite database.
 
     Returns:
-        sqlite3.Connection: SQLite connection object if successful, None otherwise.
+        tuple: SQLite connection object if successful and the path to the file. (None, None) otherwise.
     """
-    try:
-        conn = sqlite3.connect(path_to_history)
-        logging.info(f"Connected to SQLite database at {path_to_history}")
-        return conn
-    except Exception as e:
-        logging.error(str(e))
-        return None
+    while retries > 0:
+        try:
+            with sqlite3.connect(path_to_history, isolation_level='IMMEDIATE', check_same_thread=False) as conn:
+                dummy_query(conn)  # Check for lock with a dummy query
+                logging.info(f"Connected to SQLite database at {path_to_history}")
+                return conn, path_to_history  # return the path_to_history to identify if it's a temp db
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                temp_db_path = tempfile.mktemp(suffix=".sqlite")
+                shutil.copy2(path_to_history, temp_db_path)
+                sleep(BACKOFF_FACTOR * (MAX_RETRIES - retries + 1))
+                retries -= 1
+                logging.info(
+                    f"Database `{path_to_history}` was locked. Created a temporary copy at {temp_db_path}. Try #: {MAX_RETRIES-retries}")
+                path_to_history = temp_db_path
+            else:
+                logging.error(str(e))
+                return None, None
+
+
+def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    """Check if a table exists in the SQLite database.
+
+    Args:
+        conn (sqlite3.Connection): SQLite connection object.
+        table_name (str): Name of the table to check.
+
+    Returns:
+        bool: True if table exists, False otherwise.
+    """
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    result = cursor.fetchone()
+    return result is not None
 
 
 def fetch_and_write_data(
@@ -50,6 +109,7 @@ def fetch_and_write_data(
     """
     cursor = conn.cursor()
     epoch_start = datetime(1601, 1, 1)
+    successful_extractions = 0
 
     def convert_chrome_time(chrome_time):
         return epoch_start + timedelta(microseconds=chrome_time)
@@ -85,19 +145,28 @@ def fetch_and_write_data(
                     f.write(f"{field.ljust(field_name_length)}: {value}\n")
                 f.write("=" * max_length + "\n")
 
+    error = False
     for extract_type in extract_types:
         query, columns, time_cols = query_dict[extract_type]
-        df = fetch_and_convert_data(query, columns, time_cols)
-        for fmt in formats:
-            output_file = os.path.join(
-                output_dir, f"{output_base}_{extract_type}.{fmt}")
-            if fmt == 'csv':
-                df.to_csv(output_file, index=False)
-            elif fmt == 'xlsx':
-                df.to_excel(output_file, index=False, engine='openpyxl')
-            elif fmt == 'txt':
-                _pretty_txt(df, output_file)
-            logging.info(f"Data saved to {output_file}")
+        try:
+            df = fetch_and_convert_data(query, columns, time_cols)
+            for fmt in formats:
+                output_file = os.path.normpath(os.path.join(output_dir, f"{output_base}_{extract_type}.{fmt}"))
+                if fmt == 'csv':
+                    df.to_csv(output_file, index=False)
+                elif fmt == 'xlsx':
+                    df.to_excel(output_file, index=False, engine='openpyxl')
+                elif fmt == 'txt':
+                    _pretty_txt(df, output_file)
+                logging.info(f"Data saved to {output_file}")
+        except sqlite3.OperationalError as e:
+            error = True
+            if "no such table" in str(e):
+                logging.warning(f"The table '{query.split(' ')[3]}' does not exist. Skipping extraction.")
+                continue
+    if not error:
+        successful_extractions = 1
+    return successful_extractions
 
 
 def is_sqlite3(filename: str) -> bool:
@@ -109,9 +178,16 @@ def is_sqlite3(filename: str) -> bool:
     Returns:
         bool: True if the file is an SQLite3 database, False otherwise.
     """
-    with open(filename, 'rb') as f:
-        header = f.read(16)
-    return header == b'SQLite format 3\x00'
+    if not os.access(filename, os.R_OK):  # Check for read permission
+        logging.error(f"Access denied for {filename}. Ensure you have read permissions.")
+        return False
+    try:
+        with open(filename, 'rb') as f:
+            header = f.read(16)
+        return header == b'SQLite format 3\x00'
+    except Exception as e:
+        logging.error(f"Failed to determine if {filename} is an SQLite3 database: {str(e)}")
+        return False
 
 
 def main():
@@ -155,30 +231,55 @@ def main():
     # Initialize logging if enabled
     init_logging(args.log)
 
-    # Validate and create output directory
-    if not os.path.exists(args.dir):
-        os.makedirs(args.dir)
+    output_dir = os.path.normpath(args.dir)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-    def _process_history_file(input_path, output_dir, output_base, formats, extract_types):
-        conn = connect_db(input_path)
-        fetch_and_write_data(conn, output_dir, output_base, formats, extract_types)
+    def _process_history_file(queue, output_dir, formats, extract_types):
+        successful_conversions = 0
+        while not queue.empty():
+            input_path = queue.get()
+            logging.info(f"Processing {input_path}")
+            try:
+                input_path = os.path.normpath(input_path)
+                conn, db_path = connect_db(input_path)
+                if conn is not None:
+                    output_base = os.path.splitext(os.path.basename(input_path))[0]
+                    successful_conversions += fetch_and_write_data(conn,
+                                                                   output_dir, output_base, formats, extract_types)
+                if conn is not None:
+                    conn.close()
+                if db_path != input_path:
+                    with FILE_LOCK:
+                        if os.access(db_path, os.W_OK):
+                            os.remove(db_path)
+            except Exception as e:
+                logging.error(f"An error occurred while processing {input_path}: {str(e)}")
+        return successful_conversions
 
     exit_code = 0  # EXIT_SUCCESS
+    successful_conversions = 0  # Initialize a counter for successful conversions
+
     try:
+        queue = Queue()
         if args.type == 'folder':
-            # Process all SQLite3 files in the directory
             for filename in os.listdir(args.input):
                 input_path = os.path.join(args.input, filename)
                 if is_sqlite3(input_path):
-                    output_base = os.path.splitext(filename)[0]
-                    _process_history_file(input_path, args.dir, output_base, args.formats, args.extract)
+                    queue.put(input_path)
+
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [
+                    executor.submit(_process_history_file, queue, args.dir, args.formats, args.extract)
+                    for _ in range(min(10, queue.qsize()))]
+                print(successful_conversions)
+                successful_conversions = sum(future.result() for future in futures)
         else:
-            # Process single SQLite3 file
-            conn = connect_db(args.input)
-            if conn is None:
-                exit_code = 1  # EXIT_FAILURE
-            else:
-                _process_history_file(conn, args.dir, args.output, args.formats, args.extract)
+            queue.put(args.input)
+            successful_conversions = _process_history_file(queue, args.dir, args.formats, args.extract)
+
+        logging.info(f"Successfully converted {successful_conversions} file(s).")
+
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
         exit_code = 2

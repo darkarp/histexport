@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 # Define package metadata
 metadata = {
     'name': 'histexport',
-    'version': '0.2.3',
+    'version': '0.2.4',
     'description': 'A Python utility to export Chromium-based browser history and downloads to various formats.',
     'author': 'Mario Nascimento',
     'author_email': 'mario@whitehathacking.tech',
@@ -32,6 +32,7 @@ metadata = {
 requirements = [
     'pandas >= 1.0.0',
     'openpyxl >= 3.0.0',
+    'colorlog >= 6.0.0'
 ]
 
 # Entry points for command line utility
