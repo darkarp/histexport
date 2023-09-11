@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 # Define package metadata
 metadata = {
     'name': 'histexport',
-    'version': '0.2.4',
+    'version': '0.2.5',
     'description': 'A Python utility to export Chromium-based browser history and downloads to various formats.',
     'author': 'Mario Nascimento',
     'author_email': 'mario@whitehathacking.tech',

@@ -25,9 +25,8 @@ def init_logging(enable_logging: bool) -> None:
         enable_logging (bool): Flag to enable or disable logging.
     """
     if enable_logging:
-        # logging.basicConfig(level=logging.INFO)
-        # logging.info("Logging is enabled.")
-        # Create a logger with colorized output
+        logging.basicConfig(level=logging.INFO)
+        logging.info("Logging is enabled.")
         logger = colorlog.getLogger()
         logger.setLevel(logging.INFO)
         handler = colorlog.StreamHandler()
@@ -125,8 +124,8 @@ def fetch_and_write_data(
 
     query_dict = {
         'urls': ("SELECT url, title, visit_count, last_visit_time FROM urls", ['URL', 'Title', 'Visit_Count', 'Last_Visit_Time'], ['Last_Visit_Time']),
-        'downloads': ("SELECT downloads.target_path, downloads.start_time, downloads.end_time, downloads.total_bytes, downloads.received_bytes, downloads_url_chains.url FROM downloads INNER JOIN downloads_url_chains ON downloads.id=downloads_url_chains.id",
-                      ['Target_Path', 'Start_Time', 'End_Time', 'Total_Bytes', 'Received_Bytes', 'URL'], ['Start_Time', 'End_Time'])
+        'downloads': ("SELECT downloads.target_path, downloads.start_time, downloads.end_time, downloads.total_bytes, downloads.received_bytes, downloads_url_chains.url, downloads.tab_referrer_url, downloads.referrer FROM downloads INNER JOIN downloads_url_chains ON downloads.id=downloads_url_chains.id",
+                      ['Target_Path', 'Start_Time', 'End_Time', 'Total_Bytes', 'Received_Bytes', 'URL', 'Tab_Referrer_URL', 'Referrer'], ['Start_Time', 'End_Time'])
     }
 
     def _pretty_txt(df, file_name):
