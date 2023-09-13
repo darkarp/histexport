@@ -82,7 +82,13 @@ Either of these methods will install the required Python packages and make `hist
 - `-d`, `--dir`: Output directory. (optional, default is `./`)
 - `-f`, `--formats`: Output formats (csv, xlsx, txt). (optional, default is `txt`)
 - `-e`, `--extract`: Data to extract (urls, downloads). (optional, default is both)
-- `-l`, `--log`: Enable logging. (optional, default is disabled)
+- `-l`, `--log`: Enable logging. (optional, default is disabled. 
+  - `-l 1`: CRITICAL
+  - `-l 2`: ERROR
+  - `-l 3`: WARNING
+  - `-l 4`: INFO
+  - `-l 5`: DEBUG
+- `-v`, `--version`: Show version.
 
 ## Data Extraction
 

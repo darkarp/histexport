@@ -3,6 +3,7 @@ import shutil
 import sqlite3
 import logging
 import argparse
+import sys
 import tempfile
 import colorlog
 import pandas as pd
@@ -10,6 +11,7 @@ from time import sleep
 from queue import Queue
 from typing import List
 from threading import Lock
+from version import __version__
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
@@ -18,17 +20,24 @@ BACKOFF_FACTOR = 0.2
 FILE_LOCK = Lock()
 
 
-def init_logging(enable_logging: bool) -> None:
+def init_logging(level: int) -> None:
     """Initialize logging.
 
     Args:
         enable_logging (bool): Flag to enable or disable logging.
     """
-    if enable_logging:
-        logging.basicConfig(level=logging.INFO)
-        logging.info("Logging is enabled.")
+    if level:
         logger = colorlog.getLogger()
-        logger.setLevel(logging.INFO)
+        if level == 1:
+            logger.setLevel(logging.CRITICAL)
+        elif level == 2:
+            logger.setLevel(logging.ERROR)
+        elif level == 3:
+            logger.setLevel(logging.WARNING)
+        elif level == 4:
+            logger.setLevel(logging.INFO)
+        elif level == 5:
+            logger.setLevel(logging.DEBUG)
         handler = colorlog.StreamHandler()
         handler.setFormatter(colorlog.ColoredFormatter(
             '%(log_color)s%(levelname)-8s%(reset)s %(message)s',
@@ -41,6 +50,7 @@ def init_logging(enable_logging: bool) -> None:
             }
         ))
         logger.addHandler(handler)
+        logging.info(f"Logging is enabled at level {level}.")
 
 
 def dummy_query(conn: sqlite3.Connection) -> bool:
@@ -95,7 +105,7 @@ def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
 
 
 def fetch_and_write_data(
-        conn: sqlite3.Connection, output_dir: str, output_base: str, formats: List[str],
+        conn: sqlite3.Connection, output_file_name: str, output_dir: str, output_base: str, formats: List[str],
         extract_types: List[str]) -> None:
     """Fetch data from the SQLite database and write it to specified output formats.
 
@@ -150,7 +160,7 @@ def fetch_and_write_data(
         try:
             df = fetch_and_convert_data(query, columns, time_cols)
             for fmt in formats:
-                output_file = os.path.normpath(os.path.join(output_dir, f"{output_base}_{extract_type}.{fmt}"))
+                output_file = os.path.normpath(os.path.join(output_dir, f"{output_file_name}_{extract_type}.{fmt}"))
                 if fmt == 'csv':
                     df.to_csv(output_file, index=False)
                 elif fmt == 'xlsx':
@@ -196,6 +206,9 @@ def main():
     Returns:
         int: Exit code (0 for success, non-zero for failure).
     """
+    if '-v' in sys.argv or '--version' in sys.argv:
+        print(f"HistExport version {__version__}")
+        sys.exit(0)
     parser = argparse.ArgumentParser(
         description="Export Chromium-based browser and download history to various formats.",
         formatter_class=argparse.RawTextHelpFormatter,
@@ -205,7 +218,7 @@ def main():
         2) Specify output directory and formats:
             histexport -i path/to/history/history_file -o output_file -d path/to/output -f csv xlsx
         3) Enable logging (`-l`):
-            histexport -i path/to/history/history_file -o output_file -l
+            histexport -i path/to/history/history_file -o output_file -l 1
         4) Extract URLs and downloads from a folder of SQLite files:
             histexport -i path/to/history_folder -t folder -o output_file -d path/to/output -f csv xlsx -e urls downloads
         """)
@@ -222,8 +235,12 @@ def main():
         help='Output formats. Multiple formats can be specified. Default is txt')
     parser.add_argument('-e', '--extract', nargs='+', choices=['urls', 'downloads'], default=[
                         'urls', 'downloads'], help='Types to extract: urls, downloads, or both. Default is both')
-    parser.add_argument('-l', '--log', action='store_true',
-                        help='Enable logging. Default is disabled')
+    parser.add_argument(
+        '-l', '--log', type=int, choices=[1, 2, 3, 4, 5],
+        default=0,
+        help='Enable logging with debug level. 1=CRITICAL, 2=ERROR, 3=WARNING, 4=INFO, 5=DEBUG. Default is disabled')
+    parser.add_argument('-v', '--version', action='store_true',
+                        help='Show the version of this script.')
 
     args = parser.parse_args()
 
@@ -234,7 +251,7 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    def _process_history_file(queue, output_dir, formats, extract_types):
+    def _process_history_file(queue, output_file, output_dir, formats, extract_types):
         successful_conversions = 0
         while not queue.empty():
             input_path = queue.get()
@@ -244,7 +261,7 @@ def main():
                 conn, db_path = connect_db(input_path)
                 if conn is not None:
                     output_base = os.path.splitext(os.path.basename(input_path))[0]
-                    successful_conversions += fetch_and_write_data(conn,
+                    successful_conversions += fetch_and_write_data(conn, output_file,
                                                                    output_dir, output_base, formats, extract_types)
                 if conn is not None:
                     conn.close()
@@ -269,13 +286,13 @@ def main():
 
             with ThreadPoolExecutor(max_workers=10) as executor:
                 futures = [
-                    executor.submit(_process_history_file, queue, args.dir, args.formats, args.extract)
+                    executor.submit(_process_history_file, queue, args.output, args.dir, args.formats, args.extract)
                     for _ in range(min(10, queue.qsize()))]
                 print(successful_conversions)
                 successful_conversions = sum(future.result() for future in futures)
         else:
             queue.put(args.input)
-            successful_conversions = _process_history_file(queue, args.dir, args.formats, args.extract)
+            successful_conversions = _process_history_file(queue, args.output, args.dir, args.formats, args.extract)
 
         logging.info(f"Successfully converted {successful_conversions} file(s).")
 
