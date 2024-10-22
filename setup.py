@@ -1,5 +1,4 @@
 from setuptools import setup, find_packages
-from version import __version__
 
 # Read the long description from README.md
 with open("README.md", "r", encoding="utf-8") as f:
@@ -8,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 # Define package metadata
 metadata = {
     'name': 'histexport',
-    'version': __version__,
+    'version': "0.3.0",
     'description': 'A Python utility to export Chromium-based browser history and downloads to various formats.',
     'author': 'Mario Nascimento',
     'author_email': 'mario@whitehathacking.tech',

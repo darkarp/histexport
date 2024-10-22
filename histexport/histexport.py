@@ -11,9 +11,10 @@ from time import sleep
 from queue import Queue
 from typing import List
 from threading import Lock
-from version import __version__
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
+
+__version__ = "0.3.0"
 
 MAX_RETRIES = 5
 BACKOFF_FACTOR = 0.2
